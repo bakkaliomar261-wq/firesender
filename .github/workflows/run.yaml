@@ -1,0 +1,47 @@
+name: 20×5h — Run private repo (all via secrets)
+
+on:
+  workflow_dispatch: {}  # no visible inputs
+
+permissions:
+  contents: read
+
+jobs:
+  run20:
+    name: job ${{ matrix.idx }} — up to 5h
+    runs-on: ubuntu-latest
+    # hard stop guard (a bit above 5h, well under GH's 6h/job ceiling)
+    timeout-minutes: 310
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        idx: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+    steps:
+      - name: Checkout PRIVATE repo (name & ref from secrets)
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ secrets.PRIVATE_REPO }}   # e.g. org/repo
+          ref:        ${{ secrets.PRIVATE_REPO_REF }} # e.g. main or a SHA
+          token:      ${{ secrets.PRIVATE_REPO_TOKEN }} # fine-grained PAT (Contents: Read)
+          path:       private
+
+      # Optional toolchain setup goes here (Node/Python/Docker/etc.)
+
+      - name: Run private code (masked)
+        working-directory: private
+        shell: bash
+        env:
+          JOB_INDEX: ${{ matrix.idx }}
+          # optional: set to "300" in repo secrets to override the default
+          RUN_MINUTES_SECRET: ${{ secrets.RUN_MINUTES }}
+        run: |
+          set -euo pipefail
+          # default to 300 minutes (5h) if RUN_MINUTES is not provided as a secret
+          RUN_MINUTES="${RUN_MINUTES_SECRET:-300}"
+          echo "▶ Starting job $JOB_INDEX for ${RUN_MINUTES} minutes at $(date -Is)"
+
+          # Run the secret command; its literal value will be masked as *** in logs
+          timeout "${RUN_MINUTES}m" bash -lc "${{ secrets.RUN_CMD }}"
+
+          echo "✅ Finished at $(date -Is)"
